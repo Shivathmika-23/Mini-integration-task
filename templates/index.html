@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Voice → Website Generator</title>
+  <style>
+    body {
+      font-family: Arial;
+      background: #f4f6f8;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+    }
+    .box {
+      background: white;
+      padding: 30px;
+      border-radius: 10px;
+      width: 400px;
+      text-align: center;
+    }
+    button {
+      padding: 10px 20px;
+      margin-top: 15px;
+      cursor: pointer;
+    }
+    iframe {
+      margin-top: 20px;
+      width: 100%;
+      height: 300px;
+      border: 1px solid #ccc;
+    }
+  </style>
+</head>
+<body>
+
+<div class="box">
+  <h2>Voice → Website</h2>
+
+  <input type="file" id="audioFile" accept=".wav"><br>
+  <button onclick="uploadAudio()">Generate Website</button>
+  <p id="status"></p>
+
+  <iframe id="result"></iframe>
+</div>
+
+<script>
+function uploadAudio() {
+  const file = document.getElementById("audioFile").files[0];
+  if (!file) {
+    alert("Please select a WAV file");
+    return;
+  }
+
+  document.getElementById("status").innerText = "Processing...";
+
+  const formData = new FormData();
+  formData.append("audio", file);
+
+  fetch("/generate-website", {
+    method: "POST",
+    body: formData
+  })
+  .then(res => res.text())
+  .then(html => {
+    document.getElementById("result").srcdoc = html;
+    document.getElementById("status").innerText = "Done ✔";
+  })
+  .catch(() => alert("Error"));
+}
+</script>
+
+</body>
+</html>

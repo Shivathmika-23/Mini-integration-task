@@ -30,11 +30,22 @@ def home():
 # -----------------------------
 def extract_with_llm(text):
     prompt = f"""
-Extract website details from the text below.
+You are an information extraction assistant.
 
-Text: "{text}"
+Read the text below and extract website details.
 
-Return ONLY valid JSON:
+Text:
+\"\"\"{text}\"\"\"
+
+Instructions:
+- Extract the website name, website type, design style, and services.
+- Use ONLY the information explicitly stated or clearly implied in the text.
+- Do NOT guess or add new information.
+- If a value is missing, return an empty string or empty array.
+- Return ONLY valid JSON.
+- Do NOT include explanations, comments, or markdown.
+
+Output format:
 {{
   "name": "",
   "type": "",
@@ -42,7 +53,6 @@ Return ONLY valid JSON:
   "services": []
 }}
 """
-
     completion = llm_client.chat.completions.create(
         model="meta-llama/Llama-3.1-8B-Instruct:novita",
         messages=[{"role": "user", "content": prompt}],

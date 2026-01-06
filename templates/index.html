@@ -1,184 +1,210 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-  <meta charset="UTF-8">
-  <title>Voice to Website Generator</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Voice → Website Generator</title>
 
-  <style>
-    body {
-      font-family: Arial, sans-serif;
-      background: #f4f6f8;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      height: 100vh;
-      transition: background 0.3s ease;
-    }
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 40px;
+            background-color: #f4f4f4;
+        }
 
-    /* Dim background while recording */
-    body.recording-active {
-      background: rgba(0, 0, 0, 0.08);
-    }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 12px;
+            max-width: 900px;
+        }
 
-    .card {
-      background: white;
-      padding: 30px;
-      width: 450px;
-      border-radius: 10px;
-      box-shadow: 0 10px 25px rgba(0,0,0,0.15);
-      text-align: center;
-    }
+        button {
+            padding: 12px 24px;
+            font-size: 16px;
+            cursor: pointer;
+            margin-right: 10px;
+        }
 
-    button {
-      width: 100%;
-      padding: 12px;
-      margin-top: 10px;
-      font-size: 16px;
-      border: none;
-      border-radius: 5px;
-      cursor: pointer;
-      background: #2c3e50;
-      color: white;
-      transition: background 0.3s ease;
-    }
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
 
-    button:disabled {
-      background: #aaa;
-      cursor: not-allowed;
-    }
+        textarea {
+            width: 100%;
+            height: 120px;
+            margin-top: 20px;
+            padding: 12px;
+            font-size: 14px;
+            resize: none;
+        }
 
-    /* 🔴 Recording button pulse */
-    @keyframes pulse {
-      0% {
-        box-shadow: 0 0 0 0 rgba(192, 57, 43, 0.6);
-      }
-      70% {
-        box-shadow: 0 0 0 18px rgba(192, 57, 43, 0);
-      }
-      100% {
-        box-shadow: 0 0 0 0 rgba(192, 57, 43, 0);
-      }
-    }
+        .mic-container {
+            margin: 25px 0;
+            display: flex;
+            justify-content: center;
+        }
 
-    button.recording {
-      background: #c0392b;
-      animation: pulse 1.5s infinite;
-    }
+        .mic {
+            width: 80px;
+            height: 80px;
+            border-radius: 50%;
+            background: #e0e0e0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 34px;
+            color: #555;
+            box-shadow: none;
+            transition: all 0.2s ease;
+            line-height: 1;
+        }
 
-    .status {
-      margin-top: 15px;
-      font-size: 14px;
-      color: #333;
-    }
+        .output-box {
+            margin-top: 25px;
+            background: #f9f9f9;
+            padding: 20px;
+            border-radius: 10px;
+        }
 
-    iframe {
-      width: 100%;
-      height: 400px;
-      margin-top: 20px;
-      border: 1px solid #ccc;
-      border-radius: 5px;
-    }
-  </style>
+        iframe {
+            width: 100%;
+            height: 300px;
+            border: 1px solid #ccc;
+            margin-top: 15px;
+        }
+    </style>
 </head>
 
 <body>
+<div class="container">
+    <h2>🎙️ Voice → Website Generator</h2>
 
-<div class="card">
-  <h2>🎤 Voice → Website Generator</h2>
+    <button id="micBtn" onclick="startRecording()">Start Speaking</button>
+    <button onclick="generateWebsite()">Generate Website</button>
 
-  <button id="startBtn" onclick="startRecording()">
-    Start Recording
-  </button>
+    <div class="mic-container">
+        <div id="mic" class="mic">🎙️</div>
+    </div>
 
-  <button id="stopBtn" onclick="stopAndGenerate()" disabled>
-    Stop & Generate
-  </button>
+    <textarea id="output" placeholder="Your speech will appear here..."></textarea>
 
-  <iframe id="previewFrame"></iframe>
+    <div id="result" class="output-box" style="display:none;">
+        <h3>Extracted Details</h3>
+        <p><strong>Business Name:</strong> <span id="biz"></span></p>
+        <p><strong>Website Type:</strong> <span id="type"></span></p>
+        <p><strong>Style:</strong> <span id="style"></span></p>
+        <p><strong>Services:</strong> <span id="services"></span></p>
 
-  <p class="status" id="status">Click start and speak</p>
+        <h3>Generated Website Preview</h3>
+        <iframe id="preview"></iframe>
+    </div>
 </div>
 
 <script>
-  const SpeechRecognition =
-    window.SpeechRecognition || window.webkitSpeechRecognition;
+    let recognition;
+    let audioContext;
+    let analyser;
+    let micSource;
+    let animationId;
 
-  const recognition = new SpeechRecognition();
-  recognition.lang = "en-US";
-  recognition.continuous = true;      // keep listening
-  recognition.interimResults = false; // final text only
+    async function startRecording() {
+        if (!('webkitSpeechRecognition' in window)) {
+            alert("Speech recognition not supported.");
+            return;
+        }
 
-  let finalText = "";
-  let isRecording = false;
+        const micBtn = document.getElementById("micBtn");
+        const mic = document.getElementById("mic");
 
-  const startBtn = document.getElementById("startBtn");
-  const stopBtn = document.getElementById("stopBtn");
-  const status = document.getElementById("status");
+        micBtn.innerText = "Listening...";
+        micBtn.disabled = true;
 
-  function startRecording() {
-    finalText = "";
-    isRecording = true;
+        mic.style.background = "#4CAF50";
+        mic.style.color = "white";
 
-    recognition.start();
+        startMicVisualization();
 
-    document.body.classList.add("recording-active");
+        recognition = new webkitSpeechRecognition();
+        recognition.lang = "en-US";
+        recognition.continuous = false;
 
-    status.innerText = "🎙 Listening... Speak freely, click stop when done.";
-    startBtn.disabled = true;
-    stopBtn.disabled = false;
-    startBtn.classList.add("recording");
-  }
+        recognition.onresult = (event) => {
+            document.getElementById("output").value =
+                event.results[0][0].transcript;
+        };
 
-  recognition.onresult = (event) => {
-    let chunk = event.results[event.results.length - 1][0].transcript;
-    finalText += " " + chunk;
-    status.innerText = "📝 Captured: " + finalText;
-  };
+        recognition.onend = stopMic;
+        recognition.onerror = stopMic;
 
-  function stopAndGenerate() {
-    if (!isRecording) return;
-
-    recognition.stop();
-    isRecording = false;
-
-    if (!finalText.trim()) {
-      status.innerText = "❌ No speech detected";
-      resetButtons();
-      return;
+        recognition.start();
     }
 
-    status.innerText = "⏳ Generating website...";
+    async function startMicVisualization() {
+        audioContext = new AudioContext();
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
 
-    fetch("/generate-website-text", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text: finalText.trim() })
-    })
-    .then(res => res.text())
-    .then(html => {
-      document.getElementById("previewFrame").srcdoc = html;
-      status.innerText = "✅ Website generated";
-      resetButtons();
-    })
-    .catch(() => {
-      status.innerText = "❌ Error generating website";
-      resetButtons();
-    });
-  }
+        analyser = audioContext.createAnalyser();
+        analyser.fftSize = 256;
 
-  function resetButtons() {
-    startBtn.disabled = false;
-    stopBtn.disabled = true;
-    startBtn.classList.remove("recording");
-    document.body.classList.remove("recording-active");
-  }
+        micSource = audioContext.createMediaStreamSource(stream);
+        micSource.connect(analyser);
 
-  recognition.onerror = (event) => {
-    status.innerText = "❌ Speech error: " + event.error;
-    resetButtons();
-  };
+        const dataArray = new Uint8Array(analyser.frequencyBinCount);
+        const mic = document.getElementById("mic");
+
+        function animate() {
+            analyser.getByteFrequencyData(dataArray);
+            let volume = dataArray.reduce((a, b) => a + b) / dataArray.length;
+            let scale = Math.min(40, volume);
+
+            mic.style.boxShadow =
+                `0 0 0 ${scale}px rgba(76,175,80,0.3)`;
+
+            animationId = requestAnimationFrame(animate);
+        }
+
+        animate();
+    }
+
+    function stopMic() {
+        const micBtn = document.getElementById("micBtn");
+        const mic = document.getElementById("mic");
+
+        micBtn.innerText = "Start Speaking";
+        micBtn.disabled = false;
+
+        cancelAnimationFrame(animationId);
+        if (audioContext) audioContext.close();
+
+        mic.style.boxShadow = "none";
+        mic.style.background = "#e0e0e0";
+        mic.style.color = "#555";
+    }
+
+    async function generateWebsite() {
+        const text = document.getElementById("output").value;
+        if (!text.trim()) {
+            alert("Please speak something first.");
+            return;
+        }
+
+        const res = await fetch("/generate", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ text })
+        });
+
+        const data = await res.json();
+
+        document.getElementById("biz").innerText = data.business_name;
+        document.getElementById("type").innerText = data.website_type;
+        document.getElementById("style").innerText = data.style;
+        document.getElementById("services").innerText =
+            data.services.join(", ");
+
+        document.getElementById("preview").srcdoc = data.html;
+        document.getElementById("result").style.display = "block";
+    }
 </script>
-
 </body>
 </html>

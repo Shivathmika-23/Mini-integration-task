@@ -1,21 +1,12 @@
-
-
-import os
 import json
-import speech_recognition as sr
+import os
 from flask import Flask, request, Response, render_template
-from werkzeug.utils import secure_filename
 from openai import OpenAI
 HF_TOKEN = os.getenv("HF_TOKEN")
 
-# -----------------------------
-# Config
-# -----------------------------
-UPLOAD_FOLDER = os.path.join(os.getcwd(), "uploads")
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 # -----------------------------
-# LLM Client (HF Router)
+# LLM Client (Hugging Face Router)
 # -----------------------------
 llm_client = OpenAI(
     base_url="https://router.huggingface.co/v1",
@@ -28,23 +19,14 @@ llm_client = OpenAI(
 app = Flask(__name__)
 
 # -----------------------------
-# UI Route
+# UI
 # -----------------------------
 @app.route("/")
 def home():
     return render_template("index.html")
 
 # -----------------------------
-# Voice → Text (Google Speech)
-# -----------------------------
-def voice_to_text(wav_path):
-    recognizer = sr.Recognizer()
-    with sr.AudioFile(wav_path) as source:
-        audio = recognizer.record(source)
-    return recognizer.recognize_google(audio)
-
-# -----------------------------
-# Extract Website Details
+# LLM: TEXT → JSON
 # -----------------------------
 def extract_with_llm(text):
     prompt = f"""
@@ -60,65 +42,65 @@ Return ONLY valid JSON:
   "services": []
 }}
 """
+
     completion = llm_client.chat.completions.create(
         model="meta-llama/Llama-3.1-8B-Instruct:novita",
         messages=[{"role": "user", "content": prompt}],
         temperature=0
     )
 
-    return json.loads(completion.choices[0].message.content.strip())
+    content = completion.choices[0].message.content
+    content = content[content.find("{"):content.rfind("}") + 1]
+    return json.loads(content)
 
 # -----------------------------
-# Generate HTML
+# JSON → HTML
 # -----------------------------
 def generate_html(data):
-    services_html = "".join(
-        f"<li>{s}</li>" for s in data.get("services", [])
-    )
+    services_html = "".join(f"<li>{s}</li>" for s in data.get("services", []))
 
     return f"""
 <!DOCTYPE html>
 <html>
 <head>
   <title>{data.get("name", "Website")}</title>
+  <style>
+    body {{
+      font-family: Arial;
+      padding: 40px;
+      background: #f4f6f8;
+    }}
+    h1 {{ color: #2c3e50; }}
+    ul {{ margin-top: 10px; }}
+  </style>
 </head>
 <body>
-  <h1>{data.get("name", "")} - {data.get("type", "")}</h1>
-  <p>Style: {data.get("style", "")}</p>
-
+  <h1>{data.get("name")} - {data.get("type")}</h1>
+  <p><b>Style:</b> {data.get("style")}</p>
   <h3>Services</h3>
-  <ul>
-    {services_html}
-  </ul>
+  <ul>{services_html}</ul>
 </body>
 </html>
 """
 
 # -----------------------------
-# API Endpoint (WAV only)
+# API: TEXT → WEBSITE
 # -----------------------------
-@app.route("/generate-website", methods=["POST"])
-def generate_website():
-    if "audio" not in request.files:
-        return {"error": "No file uploaded"}, 400
+@app.route("/generate-website-text", methods=["POST"])
+def generate_website_text():
+    data = request.json
+    text = data.get("text")
 
-    uploaded_file = request.files["audio"]
-    filename = secure_filename(uploaded_file.filename)
+    if not text:
+        return {"error": "No text provided"}, 400
 
-    if not filename.lower().endswith(".wav"):
-        return {"error": "Only WAV files supported"}, 400
-
-    input_path = os.path.join(UPLOAD_FOLDER, filename)
-    uploaded_file.save(input_path)
-
-    text = voice_to_text(input_path)
     details = extract_with_llm(text)
     html = generate_html(details)
 
     return Response(html, mimetype="text/html")
 
 # -----------------------------
-# Run Server
+# RUN
 # -----------------------------
 if __name__ == "__main__":
     app.run(debug=True)

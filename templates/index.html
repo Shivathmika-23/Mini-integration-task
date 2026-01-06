@@ -1,73 +1,155 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <title>Voice → Website Generator</title>
+  <meta charset="UTF-8">
+  <title>Voice to Website Generator</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
   <style>
     body {
-      font-family: Arial;
+      font-family: Arial, sans-serif;
       background: #f4f6f8;
       display: flex;
       justify-content: center;
       align-items: center;
       height: 100vh;
     }
-    .box {
+
+    .card {
       background: white;
       padding: 30px;
+      width: 450px;
       border-radius: 10px;
-      width: 400px;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.15);
       text-align: center;
     }
+
     button {
-      padding: 10px 20px;
-      margin-top: 15px;
-      cursor: pointer;
-    }
-    iframe {
-      margin-top: 20px;
       width: 100%;
-      height: 300px;
-      border: 1px solid #ccc;
+      padding: 12px;
+      margin-top: 10px;
+      font-size: 16px;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+      background: #2c3e50;
+      color: white;
+    }
+
+    button:disabled {
+      background: #aaa;
+      cursor: not-allowed;
+    }
+
+    button.recording {
+      background: #c0392b;
+    }
+
+    .status {
+      margin-top: 15px;
+      font-size: 14px;
+      color: #333;
     }
   </style>
 </head>
 <body>
 
-<div class="box">
-  <h2>Voice → Website</h2>
+<div class="card">
+  <h2>🎤 Voice → Website Generator</h2>
 
-  <input type="file" id="audioFile" accept=".wav"><br>
-  <button onclick="uploadAudio()">Generate Website</button>
-  <p id="status"></p>
+  <button id="startBtn" onclick="startRecording()">Start Recording</button>
+  <button id="stopBtn" onclick="stopAndGenerate()" disabled>
+    Stop & Generate
+  </button>
+  <iframe
+    id="previewFrame"
+    style="width:100%; height:400px; margin-top:20px; border:1px solid #ccc;">
+  </iframe>
 
-  <iframe id="result"></iframe>
+
+  <p class="status" id="status">Click start and speak</p>
 </div>
 
 <script>
-function uploadAudio() {
-  const file = document.getElementById("audioFile").files[0];
-  if (!file) {
-    alert("Please select a WAV file");
-    return;
+  const SpeechRecognition =
+    window.SpeechRecognition || window.webkitSpeechRecognition;
+
+  const recognition = new SpeechRecognition();
+  recognition.lang = "en-US";
+  recognition.continuous = true;        // ✅ KEEP LISTENING
+  recognition.interimResults = false;   // ✅ FINAL TEXT ONLY
+
+  let finalText = "";
+  let isRecording = false;
+
+  const startBtn = document.getElementById("startBtn");
+  const stopBtn = document.getElementById("stopBtn");
+  const status = document.getElementById("status");
+
+  function startRecording() {
+    finalText = "";
+    isRecording = true;
+
+    recognition.start();
+
+    status.innerText = "🎙 Listening... Speak freely, click stop when done.";
+    startBtn.disabled = true;
+    stopBtn.disabled = false;
+    startBtn.classList.add("recording");
   }
 
-  document.getElementById("status").innerText = "Processing...";
+  recognition.onresult = (event) => {
+    let chunk = event.results[event.results.length - 1][0].transcript;
+    finalText += " " + chunk;   // ✅ ACCUMULATE FULL SENTENCE
+    status.innerText = "📝 Captured so far: " + finalText;
+  };
 
-  const formData = new FormData();
-  formData.append("audio", file);
+  function stopAndGenerate() {
+    if (!isRecording) return;
 
-  fetch("/generate-website", {
-    method: "POST",
-    body: formData
-  })
-  .then(res => res.text())
-  .then(html => {
-    document.getElementById("result").srcdoc = html;
-    document.getElementById("status").innerText = "Done ✔";
-  })
-  .catch(() => alert("Error"));
-}
+    recognition.stop();
+    isRecording = false;
+
+    if (!finalText.trim()) {
+      status.innerText = "❌ No speech detected";
+      resetButtons();
+      return;
+    }
+
+    status.innerText = "⏳ Generating website...";
+
+    fetch("/generate-website-text", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text: finalText.trim() })
+    })
+    .then(res => res.text())
+    .then(html => {
+      const iframe = document.getElementById("previewFrame");
+      iframe.srcdoc = html;
+
+
+      status.innerText = "✅ Website generated";
+      resetButtons();
+    })
+    .catch(() => {
+      status.innerText = "❌ Error generating website";
+      resetButtons();
+    });
+  }
+
+  function resetButtons() {
+    startBtn.disabled = false;
+    stopBtn.disabled = true;
+    startBtn.classList.remove("recording");
+  }
+
+  recognition.onerror = (event) => {
+    status.innerText = "❌ Speech error: " + event.error;
+    resetButtons();
+  };
 </script>
+
 
 </body>
 </html>

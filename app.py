@@ -38,7 +38,7 @@ Text:
 \"\"\"{text}\"\"\"
 
 Instructions:
-- Extract the website name, website type, design style, and services.
+- Extract the website name, website type, design style(eg.Minimal, Modern etc...), and services.
 - Use ONLY the information explicitly stated or clearly implied in the text.
 - Do NOT guess or add new information.
 - If a value is missing, return an empty string or empty array.

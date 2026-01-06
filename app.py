@@ -1,51 +1,54 @@
-import json
-import os
-from flask import Flask, request, Response, render_template
+from flask import Flask, request, jsonify, render_template
 from openai import OpenAI
+import os
+import json
+
+app = Flask(__name__)
+
+# -----------------------------
+# Hugging Face Router LLM Setup
+# -----------------------------
 HF_TOKEN = os.getenv("HF_TOKEN")
 
-
-# -----------------------------
-# LLM Client (Hugging Face Router)
-# -----------------------------
 llm_client = OpenAI(
     base_url="https://router.huggingface.co/v1",
     api_key=HF_TOKEN
 )
 
-# -----------------------------
-# Flask App
-# -----------------------------
-app = Flask(__name__)
 
-# -----------------------------
-# UI
-# -----------------------------
 @app.route("/")
-def home():
+def index():
     return render_template("index.html")
 
+
 # -----------------------------
-# LLM: TEXT → JSON
+# LLM Extraction Function
 # -----------------------------
 def extract_with_llm(text):
     prompt = f"""
-You are an information extraction assistant.
+You are a precise information extraction system.
 
-Read the text below and extract website details.
+Your task is to extract structured website requirements from the given text.
 
 Text:
 \"\"\"{text}\"\"\"
 
-Instructions:
-- Extract the website name, website type, design style(eg.Minimal, Modern etc...), and services.
-- Use ONLY the information explicitly stated or clearly implied in the text.
-- Do NOT guess or add new information.
-- If a value is missing, return an empty string or empty array.
+Extraction Rules:
+- Extract ONLY what is explicitly stated or very clearly implied.
+- Do NOT guess names, services, or styles.
+- Do NOT infer information that is not mentioned.
+- If a field is missing, return an empty string or empty list.
+- Normalize values (e.g., "heart care" → "Cardiology").
 - Return ONLY valid JSON.
-- Do NOT include explanations, comments, or markdown.
+- Do NOT include explanations, markdown, or extra text.
 
-Output format:
+Fields to extract:
+- name: Business or website name
+- type: Website type (Hospital, School, Restaurant, Company, etc.)
+- style: Design style (Modern, Minimal, Professional, etc.)
+- services: List of services offered
+
+Output format (strict):
 {{
   "name": "",
   "type": "",
@@ -53,64 +56,84 @@ Output format:
   "services": []
 }}
 """
+
     completion = llm_client.chat.completions.create(
         model="meta-llama/Llama-3.1-8B-Instruct:novita",
         messages=[{"role": "user", "content": prompt}],
         temperature=0
     )
 
-    content = completion.choices[0].message.content
-    content = content[content.find("{"):content.rfind("}") + 1]
+    content = completion.choices[0].message.content.strip()
+
+    # Safety: extract JSON only
+    content = content[content.find("{"): content.rfind("}") + 1]
     return json.loads(content)
 
-# -----------------------------
-# JSON → HTML
-# -----------------------------
-def generate_html(data):
-    services_html = "".join(f"<li>{s}</li>" for s in data.get("services", []))
-
-    return f"""
-<!DOCTYPE html>
-<html>
-<head>
-  <title>{data.get("name", "Website")}</title>
-  <style>
-    body {{
-      font-family: Arial;
-      padding: 40px;
-      background: #f4f6f8;
-    }}
-    h1 {{ color: #2c3e50; }}
-    ul {{ margin-top: 10px; }}
-  </style>
-</head>
-<body>
-  <h1>{data.get("name")} - {data.get("type")}</h1>
-  <p><b>Style:</b> {data.get("style")}</p>
-  <h3>Services</h3>
-  <ul>{services_html}</ul>
-</body>
-</html>
-"""
 
 # -----------------------------
-# API: TEXT → WEBSITE
+# Generate Website API
 # -----------------------------
-@app.route("/generate-website-text", methods=["POST"])
-def generate_website_text():
-    data = request.json
-    text = data.get("text")
+@app.route("/generate", methods=["POST"])
+def generate():
+    data = request.get_json()
+    text = data.get("text", "")
 
-    if not text:
-        return {"error": "No text provided"}, 400
+    # Call LLM extractor
+    extracted = extract_with_llm(text)
 
-    details = extract_with_llm(text)
-    html = generate_html(details)
+    # Fallbacks (never break UI)
+    business_name = extracted.get("name") 
+    website_type = extracted.get("type") 
+    style = extracted.get("style") 
+    services = extracted.get("services")
 
-    return Response(html, mimetype="text/html")
+    # -----------------------------
+    # HTML Generation
+    # -----------------------------
+    html = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>{business_name}</title>
+        <style>
+            body {{
+                font-family: Arial, sans-serif;
+                padding: 40px;
+                background-color: #f4f4f4;
+            }}
+            .container {{
+                background: white;
+                padding: 25px;
+                border-radius: 10px;
+            }}
+            h1 {{
+                color: #2c3e50;
+            }}
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <h1>{business_name}</h1>
+            <h3>Type: {website_type}</h3>
+            <p><strong>Style:</strong> {style}</p>
 
-# -----------------------------
-# RUN
-# -----------------------------
+            <h3>Services</h3>
+            <ul>
+                {''.join(f"<li>{s}</li>" for s in services)}
+            </ul>
+        </div>
+    </body>
+    </html>
+    """
+
+    return jsonify({
+        "business_name": business_name,
+        "website_type": website_type,
+        "style": style,
+        "services": services,
+        "html": html
+    })
+
+
 if __name__ == "__main__":
     app.run(debug=True)

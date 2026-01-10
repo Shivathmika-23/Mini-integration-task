@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, UploadFile, File
+from fastapi import FastAPI, UploadFile, File, HTTPException
 from openai import OpenAI
 import speech_recognition as sr
 import tempfile
@@ -7,110 +7,152 @@ import json
 
 app = FastAPI()
 
-# LLM Setup
+# =========================
+# LLM SETUP (HuggingFace)
+# =========================
 HF_TOKEN = os.getenv("HF_TOKEN")
+
+if not HF_TOKEN:
+    raise RuntimeError("HF_TOKEN environment variable not set")
+
 llm_client = OpenAI(
     base_url="https://router.huggingface.co/v1",
     api_key=HF_TOKEN
 )
 
-def extract_with_llm(text):
-    """Extract website details using LLM"""
-    prompt = f"""Extract website details from this text and return only JSON:
+# =========================
+# LLM EXTRACTION
+# =========================
+def extract_with_llm(text: str):
+    prompt = f"""
+Extract website details from the following text.
+Return ONLY valid JSON.
 
-Text: "{text}"
+Text:
+"{text}"
 
-Return format:
+Format:
 {{
   "name": "business name",
-  "type": "website type (Hospital/School/Restaurant/Company)",
-  "style": "design style (Modern/Minimal/Professional)",
+  "type": "Hospital | School | Restaurant | Company",
+  "style": "Modern | Minimal | Professional",
   "services": ["service1", "service2"]
-}}"""
+}}
+"""
 
     try:
-        completion = llm_client.chat.completions.create(
+        response = llm_client.chat.completions.create(
             model="meta-llama/Llama-3.1-8B-Instruct:novita",
             messages=[{"role": "user", "content": prompt}],
             temperature=0
         )
-        
-        content = completion.choices[0].message.content.strip()
+
+        content = response.choices[0].message.content.strip()
         start = content.find("{")
         end = content.rfind("}") + 1
-        if start != -1 and end > 0:
-            return json.loads(content[start:end])
-    except:
-        pass
-    
-    return {"name": "My Business", "type": "Business", "style": "Modern", "services": []}
 
+        return json.loads(content[start:end])
+
+    except Exception:
+        return {
+            "name": "My Business",
+            "type": "Business",
+            "style": "Modern",
+            "services": []
+        }
+
+# =========================
+# HTML GENERATOR
+# =========================
 def generate_html(data):
-    """Generate HTML website"""
-    name = data['name']
-    website_type = data['type']
-    style = data['style']
-    services = data['services']
-    
     services_html = ""
-    if services:
-        services_html = '<h2>Our Services</h2><div class="services">'
-        for service in services:
-            services_html += f'<div class="service"><h3>{service}</h3></div>'
-        services_html += '</div>'
-    
+    if data["services"]:
+        services_html += "<h2>Our Services</h2><div class='services'>"
+        for s in data["services"]:
+            services_html += f"<div class='service'>{s}</div>"
+        services_html += "</div>"
+
     return f"""<!DOCTYPE html>
 <html>
 <head>
-    <title>{name}</title>
+    <title>{data['name']}</title>
     <style>
-        body {{ font-family: Arial, sans-serif; margin: 0; padding: 20px; background: #f5f5f5; }}
-        .container {{ max-width: 800px; margin: 0 auto; background: white; padding: 40px; border-radius: 10px; }}
-        h1 {{ color: #333; text-align: center; }}
-        .type {{ text-align: center; color: #666; margin: 20px 0; }}
-        .services {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-top: 20px; }}
-        .service {{ background: #f8f9fa; padding: 15px; border-radius: 5px; text-align: center; }}
+        body {{
+            font-family: Arial, sans-serif;
+            background: #f5f5f5;
+            padding: 30px;
+        }}
+        .container {{
+            max-width: 800px;
+            margin: auto;
+            background: white;
+            padding: 40px;
+            border-radius: 10px;
+        }}
+        h1 {{
+            text-align: center;
+        }}
+        .services {{
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-top: 20px;
+        }}
+        .service {{
+            background: #f0f0f0;
+            padding: 15px;
+            border-radius: 6px;
+            text-align: center;
+        }}
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>{name}</h1>
-        <div class="type">{website_type} - {style} Style</div>
+        <h1>{data['name']}</h1>
+        <p style="text-align:center;">
+            {data['type']} • {data['style']} Design
+        </p>
         {services_html}
     </div>
 </body>
 </html>"""
 
+# =========================
+# API ENDPOINT
+# =========================
 @app.post("/generate")
 async def generate_website(audio: UploadFile = File(...)):
     if not audio.filename:
-        raise HTTPException(status_code=400, detail="No file selected")
-    
+        raise HTTPException(status_code=400, detail="No audio file uploaded")
+
     try:
-        # Save uploaded audio file
-        with tempfile.NamedTemporaryFile(delete=False, suffix='.wav') as temp_file:
-            content = await audio.read()
-            temp_file.write(content)
-            temp_file_path = temp_file.name
-            
-        # Convert audio to text
+        # Save uploaded audio
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp:
+            tmp.write(await audio.read())
+            temp_path = tmp.name
+
+        # Speech to Text (NO PyAudio needed)
         recognizer = sr.Recognizer()
-        with sr.AudioFile(temp_file_path) as source:
+        with sr.AudioFile(temp_path) as source:
             audio_data = recognizer.record(source)
             text = recognizer.recognize_google(audio_data)
-        
-        os.unlink(temp_file_path)
-        
-        # Extract website details using LLM
+
+        os.remove(temp_path)
+
+        # LLM extraction
         website_data = extract_with_llm(text)
-        
+
         # Generate HTML
         html = generate_html(website_data)
-        
-        return {"html": html}
-        
+
+        return {
+            "transcription": text,
+            "html": html
+        }
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
 
 if __name__ == "__main__":
     import uvicorn

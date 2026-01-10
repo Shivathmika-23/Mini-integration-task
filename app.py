@@ -4,6 +4,7 @@ import speech_recognition as sr
 import tempfile
 import os
 import json
+import subprocess
 
 app = Flask(__name__)
 
@@ -101,9 +102,21 @@ def generate_website():
             temp_file_path = temp_file.name
             
         recognizer = sr.Recognizer()
-        with sr.AudioFile(temp_file_path) as source:
-            audio = recognizer.record(source)
-            text = recognizer.recognize_google(audio)
+        try:
+            with sr.AudioFile(temp_file_path) as source:
+                audio = recognizer.record(source)
+                text = recognizer.recognize_google(audio)
+        except OSError as e:
+            if "PyAudio" in str(e):
+                # Fallback: convert to wav format first if needed
+                import wave
+                with wave.open(temp_file_path, 'rb') as wav_file:
+                    frames = wav_file.readframes(-1)
+                    with sr.AudioFile(temp_file_path) as source:
+                        audio = recognizer.record(source)
+                        text = recognizer.recognize_google(audio)
+            else:
+                raise e
         
         os.unlink(temp_file_path)
         

@@ -8,30 +8,28 @@ import json
 app = FastAPI()
 
 # =========================
-# LLM SETUP (HuggingFace)
+# ENV
 # =========================
 HF_TOKEN = os.getenv("HF_TOKEN")
-
 if not HF_TOKEN:
-    raise RuntimeError("HF_TOKEN environment variable not set")
+    raise RuntimeError("HF_TOKEN not set")
 
-llm_client = OpenAI(
+client = OpenAI(
     base_url="https://router.huggingface.co/v1",
     api_key=HF_TOKEN
 )
 
 # =========================
-# LLM EXTRACTION
+# LLM
 # =========================
 def extract_with_llm(text: str):
     prompt = f"""
-Extract website details from the following text.
-Return ONLY valid JSON.
+Extract website details and return ONLY JSON.
 
 Text:
 "{text}"
 
-Format:
+JSON format:
 {{
   "name": "business name",
   "type": "Hospital | School | Restaurant | Company",
@@ -41,17 +39,14 @@ Format:
 """
 
     try:
-        response = llm_client.chat.completions.create(
+        res = client.chat.completions.create(
             model="meta-llama/Llama-3.1-8B-Instruct:novita",
             messages=[{"role": "user", "content": prompt}],
             temperature=0
         )
 
-        content = response.choices[0].message.content.strip()
-        start = content.find("{")
-        end = content.rfind("}") + 1
-
-        return json.loads(content[start:end])
+        msg = res.choices[0].message.content
+        return json.loads(msg[msg.find("{"): msg.rfind("}") + 1])
 
     except Exception:
         return {
@@ -62,96 +57,54 @@ Format:
         }
 
 # =========================
-# HTML GENERATOR
+# HTML
 # =========================
 def generate_html(data):
-    services_html = ""
-    if data["services"]:
-        services_html += "<h2>Our Services</h2><div class='services'>"
-        for s in data["services"]:
-            services_html += f"<div class='service'>{s}</div>"
-        services_html += "</div>"
+    services = "".join(
+        f"<div class='service'>{s}</div>" for s in data["services"]
+    )
 
     return f"""<!DOCTYPE html>
 <html>
 <head>
-    <title>{data['name']}</title>
-    <style>
-        body {{
-            font-family: Arial, sans-serif;
-            background: #f5f5f5;
-            padding: 30px;
-        }}
-        .container {{
-            max-width: 800px;
-            margin: auto;
-            background: white;
-            padding: 40px;
-            border-radius: 10px;
-        }}
-        h1 {{
-            text-align: center;
-        }}
-        .services {{
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 15px;
-            margin-top: 20px;
-        }}
-        .service {{
-            background: #f0f0f0;
-            padding: 15px;
-            border-radius: 6px;
-            text-align: center;
-        }}
-    </style>
+<style>
+body {{ font-family: Arial; background:#f5f5f5; padding:30px }}
+.container {{ max-width:800px; background:white; padding:40px; margin:auto }}
+.service {{ background:#eee; padding:10px; margin:10px 0 }}
+</style>
 </head>
 <body>
-    <div class="container">
-        <h1>{data['name']}</h1>
-        <p style="text-align:center;">
-            {data['type']} • {data['style']} Design
-        </p>
-        {services_html}
-    </div>
+<div class="container">
+<h1>{data['name']}</h1>
+<p>{data['type']} • {data['style']}</p>
+{services}
+</div>
 </body>
 </html>"""
 
 # =========================
-# API ENDPOINT
+# API
 # =========================
 @app.post("/generate")
-async def generate_website(audio: UploadFile = File(...)):
-    if not audio.filename:
-        raise HTTPException(status_code=400, detail="No audio file uploaded")
-
+async def generate(audio: UploadFile = File(...)):
     try:
-        # Save uploaded audio
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp:
-            tmp.write(await audio.read())
-            temp_path = tmp.name
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as f:
+            f.write(await audio.read())
+            path = f.name
 
-        # Speech to Text (NO PyAudio needed)
-        recognizer = sr.Recognizer()
-        with sr.AudioFile(temp_path) as source:
-            audio_data = recognizer.record(source)
-            text = recognizer.recognize_google(audio_data)
+        r = sr.Recognizer()
+        with sr.AudioFile(path) as src:
+            audio_data = r.record(src)
+            text = r.recognize_google(audio_data)
 
-        os.remove(temp_path)
+        os.remove(path)
 
-        # LLM extraction
-        website_data = extract_with_llm(text)
-
-        # Generate HTML
-        html = generate_html(website_data)
-
-        return {
-            "transcription": text,
-            "html": html
-        }
+        data = extract_with_llm(text)
+        return {"html": generate_html(data)}
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
 
 
 if __name__ == "__main__":

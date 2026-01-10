@@ -73,28 +73,30 @@ def generate_html(data):
 async def generate_website(audio: UploadFile = File(...)):
     response = {"debug": []}
     try:
-        # Save audio
+        # Save uploaded audio
         with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp:
             content = await audio.read()
             tmp.write(content)
             path = tmp.name
         response["debug"].append(f"Saved file: {path}")
     except Exception as e:
-        response["error"] = f"Failed to save audio: {str(e)}"
+        response["error"] = f"Failed to save audio: {e}"
+        print("ERROR:", e)
         return response
 
     try:
-        # Convert to text
+        # Recognize speech
         r = sr.Recognizer()
         with sr.AudioFile(path) as source:
             audio_data = r.record(source)
             try:
                 text = r.recognize_google(audio_data)
             except Exception as e:
-                text = f"[Recognition failed: {str(e)}]"
+                text = f"[Recognition failed: {e}]"
         response["debug"].append(f"Recognized text: {text}")
     except Exception as e:
-        response["error"] = f"SpeechRecognition error: {str(e)}"
+        response["error"] = f"SpeechRecognition error: {e}"
+        print("ERROR:", e)
         return response
     finally:
         try:
@@ -103,18 +105,22 @@ async def generate_website(audio: UploadFile = File(...)):
             pass
 
     try:
-        # Extract website data
+        # LLM extraction
         website_data = extract_with_llm(text)
         response["debug"].append(f"Website data: {website_data}")
     except Exception as e:
-        response["error"] = f"LLM extraction error: {str(e)}"
+        response["error"] = f"LLM extraction error: {e}"
+        print("ERROR:", e)
         return response
 
     try:
+        # Generate HTML
         html = generate_html(website_data)
         response["html"] = html
     except Exception as e:
-        response["error"] = f"HTML generation error: {str(e)}"
+        response["error"] = f"HTML generation error: {e}"
+        print("ERROR:", e)
         return response
 
+    print("RESPONSE DEBUG:", response)
     return response

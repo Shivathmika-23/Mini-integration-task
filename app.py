@@ -1,12 +1,11 @@
-from flask import Flask, request, jsonify
+from fastapi import FastAPI, HTTPException, UploadFile, File
 from openai import OpenAI
 import speech_recognition as sr
 import tempfile
 import os
 import json
-import subprocess
 
-app = Flask(__name__)
+app = FastAPI()
 
 # LLM Setup
 HF_TOKEN = os.getenv("HF_TOKEN")
@@ -82,60 +81,37 @@ def generate_html(data):
 </body>
 </html>"""
 
-@app.route('/')
-def index():
-    return "welcome"
-
-@app.route('/generate', methods=['POST'])
-def generate_website():
-    if 'audio' not in request.files:
-        return jsonify({"error": "No audio file provided"}), 400
-    
-    audio_file = request.files['audio']
-    if audio_file.filename == '':
-        return jsonify({"error": "No file selected"}), 400
+@app.post("/generate")
+async def generate_website(audio: UploadFile = File(...)):
+    if not audio.filename:
+        raise HTTPException(status_code=400, detail="No file selected")
     
     try:
-        # Convert audio to text
+        # Save uploaded audio file
         with tempfile.NamedTemporaryFile(delete=False, suffix='.wav') as temp_file:
-            audio_file.save(temp_file.name)
+            content = await audio.read()
+            temp_file.write(content)
             temp_file_path = temp_file.name
             
+        # Convert audio to text
         recognizer = sr.Recognizer()
-        try:
-            with sr.AudioFile(temp_file_path) as source:
-                audio = recognizer.record(source)
-                text = recognizer.recognize_google(audio)
-        except OSError as e:
-            if "PyAudio" in str(e):
-                # Fallback: convert to wav format first if needed
-                import wave
-                with wave.open(temp_file_path, 'rb') as wav_file:
-                    frames = wav_file.readframes(-1)
-                    with sr.AudioFile(temp_file_path) as source:
-                        audio = recognizer.record(source)
-                        text = recognizer.recognize_google(audio)
-            else:
-                raise e
+        with sr.AudioFile(temp_file_path) as source:
+            audio_data = recognizer.record(source)
+            text = recognizer.recognize_google(audio_data)
         
         os.unlink(temp_file_path)
         
-        # Extract details using LLM
+        # Extract website details using LLM
         website_data = extract_with_llm(text)
         
         # Generate HTML
         html = generate_html(website_data)
         
-        return jsonify({
-            "business_name": website_data["name"],
-            "website_type": website_data["type"],
-            "style": website_data["style"],
-            "services": website_data["services"],
-            "html": html
-        })
+        return {"html": html}
         
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        raise HTTPException(status_code=500, detail=str(e))
 
-if __name__ == '__main__':
-    app.run(debug=True)
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)

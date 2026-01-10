@@ -104,6 +104,14 @@ async def generate(audio: UploadFile = File(...)):
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+        
+@app.get("/")
+def root():
+    return {
+        "status": "ok",
+        "message": "API is running",
+        "endpoints": ["/generate", "/docs"]
+    }
 
 
 

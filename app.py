@@ -1,8 +1,6 @@
 from flask import Flask, request, jsonify, render_template
 from openai import OpenAI
 import speech_recognition as sr
-import io
-from pydub import AudioSegment
 import tempfile
 import os
 import json
@@ -97,20 +95,17 @@ def generate_website():
         return jsonify({"error": "No file selected"}), 400
     
     try:
-        # Convert audio to WAV format using pydub
-        audio_data = audio_file.read()
-        audio_segment = AudioSegment.from_file(io.BytesIO(audio_data))
-        
-        # Export to WAV format in memory
-        wav_buffer = io.BytesIO()
-        audio_segment.export(wav_buffer, format="wav")
-        wav_buffer.seek(0)
-        
-        # Use speech recognition
+        # Convert audio to text
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.wav') as temp_file:
+            audio_file.save(temp_file.name)
+            temp_file_path = temp_file.name
+            
         recognizer = sr.Recognizer()
-        with sr.AudioFile(wav_buffer) as source:
+        with sr.AudioFile(temp_file_path) as source:
             audio = recognizer.record(source)
             text = recognizer.recognize_google(audio)
+        
+        os.unlink(temp_file_path)
         
         # Extract details using LLM
         website_data = extract_with_llm(text)

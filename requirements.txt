@@ -1,4 +1,4 @@
-Flask==2.3.3
-openai==1.3.0
-SpeechRecognition==3.10.0
-PyAudio==0.2.11
+flask
+openai
+SpeechRecognition
+requests

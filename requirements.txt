@@ -1,4 +1,6 @@
-flask
+fastapi
+uvicorn
+python-multipart
 openai
 SpeechRecognition
-requests
+pyaudio

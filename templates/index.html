@@ -1,41 +1,37 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Voice → Website Generator</title>
-
+    <title>🎙️ Voice Website Generator</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
     <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
         body {
-            font-family: Arial, sans-serif;
-            padding: 40px;
-            background-color: #f4f4f4;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
         }
 
         .container {
-            background: white;
-            padding: 30px;
-            border-radius: 12px;
-            max-width: 900px;
+            max-width: 800px;
+            margin: 0 auto;
+            background: rgba(255,255,255,0.95);
+            padding: 40px;
+            border-radius: 20px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
         }
 
-        button {
-            padding: 12px 24px;
-            font-size: 16px;
-            cursor: pointer;
-            margin-right: 10px;
+        h1 {
+            text-align: center;
+            color: #2c3e50;
+            margin-bottom: 30px;
+            font-size: 2.5em;
         }
 
-        button:disabled {
-            background: #ccc;
-            cursor: not-allowed;
-        }
-
-        textarea {
-            width: 100%;
-            height: 120px;
-            margin-top: 20px;
-            padding: 12px;
-            font-size: 14px;
-            resize: none;
+        .voice-section {
+            text-align: center;
+            margin: 30px 0;
         }
 
         .mic-container {
@@ -45,166 +41,358 @@
         }
 
         .mic {
-            width: 80px;
-            height: 80px;
+            width: 100px;
+            height: 100px;
             border-radius: 50%;
-            background: #e0e0e0;
+            background: #e74c3c;
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 34px;
-            color: #555;
-            box-shadow: none;
-            transition: all 0.2s ease;
-            line-height: 1;
+            font-size: 40px;
+            color: white;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            border: none;
+            box-shadow: 0 5px 15px rgba(231,76,60,0.3);
         }
 
-        .output-box {
-            margin-top: 25px;
-            background: #f9f9f9;
-            padding: 20px;
+        .mic:hover {
+            transform: scale(1.1);
+        }
+
+        .mic.listening {
+            background: #27ae60;
+            animation: pulse 1.5s infinite;
+        }
+
+        @keyframes pulse {
+            0% { box-shadow: 0 0 0 0 rgba(39,174,96,0.7); }
+            70% { box-shadow: 0 0 0 20px rgba(39,174,96,0); }
+            100% { box-shadow: 0 0 0 0 rgba(39,174,96,0); }
+        }
+
+        .status {
+            margin: 20px 0;
+            padding: 15px;
             border-radius: 10px;
+            text-align: center;
+            font-weight: bold;
+        }
+
+        .status.listening {
+            background: #d5f4e6;
+            color: #27ae60;
+        }
+
+        .status.processing {
+            background: #fff3cd;
+            color: #856404;
+        }
+
+        textarea {
+            width: 100%;
+            height: 120px;
+            margin: 20px 0;
+            padding: 15px;
+            border: 2px solid #ddd;
+            border-radius: 10px;
+            font-size: 16px;
+            resize: vertical;
+        }
+
+        .btn {
+            background: #3498db;
+            color: white;
+            padding: 12px 30px;
+            border: none;
+            border-radius: 25px;
+            font-size: 16px;
+            cursor: pointer;
+            margin: 10px;
+            transition: all 0.3s ease;
+        }
+
+        .btn:hover {
+            background: #2980b9;
+            transform: translateY(-2px);
+        }
+
+        .btn:disabled {
+            background: #bdc3c7;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .result {
+            margin-top: 30px;
+            padding: 25px;
+            background: #f8f9fa;
+            border-radius: 15px;
+            display: none;
+        }
+
+        .result h3 {
+            color: #2c3e50;
+            margin-bottom: 15px;
+        }
+
+        .detail-item {
+            margin: 10px 0;
+            padding: 10px;
+            background: white;
+            border-radius: 8px;
+            border-left: 4px solid #3498db;
         }
 
         iframe {
             width: 100%;
-            height: 300px;
-            border: 1px solid #ccc;
+            height: 400px;
+            border: 2px solid #ddd;
+            border-radius: 10px;
             margin-top: 15px;
+        }
+
+        .instructions {
+            background: #e8f4fd;
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            border-left: 4px solid #3498db;
+        }
+
+        .loading {
+            display: none;
+            text-align: center;
+            margin: 20px 0;
+        }
+
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #3498db;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
         }
     </style>
 </head>
 
 <body>
 <div class="container">
-    <h2>🎙️ Voice → Website Generator</h2>
-
-    <button id="micBtn" onclick="startRecording()">Start Speaking</button>
-    <button onclick="generateWebsite()">Generate Website</button>
-
-    <div class="mic-container">
-        <div id="mic" class="mic">🎙️</div>
+    <h1>🎙️ Voice Website Generator</h1>
+    
+    <div class="instructions">
+        <strong>How to use:</strong> Click the microphone and describe your website. 
+        Say something like: "Create a modern hospital website called City Medical Center with services like cardiology, surgery, and emergency care."
     </div>
 
-    <textarea id="output" placeholder="Your speech will appear here..."></textarea>
+    <div class="voice-section">
+        <div class="mic-container">
+            <button id="micBtn" class="mic" onclick="toggleRecording()">🎙️</button>
+        </div>
+        
+        <div id="status" class="status" style="display:none;"></div>
+        
+        <div class="loading" id="loading">
+            <div class="spinner"></div>
+            <p>Generating your website...</p>
+        </div>
+    </div>
 
-    <div id="result" class="output-box" style="display:none;">
-        <h3>Extracted Details</h3>
-        <p><strong>Business Name:</strong> <span id="biz"></span></p>
-        <p><strong>Website Type:</strong> <span id="type"></span></p>
-        <p><strong>Style:</strong> <span id="style"></span></p>
-        <p><strong>Services:</strong> <span id="services"></span></p>
+    <textarea id="transcript" placeholder="Your speech will appear here... Or type your website description manually."></textarea>
+    
+    <div style="text-align: center;">
+        <button class="btn" onclick="clearAll()">Clear</button>
+    </div>
 
-        <h3>Generated Website Preview</h3>
+    <div id="result" class="result">
+        <h3>✅ Website Generated Successfully!</h3>
+        
+        <div class="detail-item">
+            <strong>Business Name:</strong> <span id="businessName"></span>
+        </div>
+        <div class="detail-item">
+            <strong>Website Type:</strong> <span id="websiteType"></span>
+        </div>
+        <div class="detail-item">
+            <strong>Design Style:</strong> <span id="designStyle"></span>
+        </div>
+        <div class="detail-item">
+            <strong>Services:</strong> <span id="servicesList"></span>
+        </div>
+
+        <h3>🌐 Website Preview</h3>
         <iframe id="preview"></iframe>
     </div>
 </div>
 
 <script>
     let recognition;
-    let audioContext;
-    let analyser;
-    let micSource;
-    let animationId;
+    let isRecording = false;
+    let autoGenerateKeywords = ['create', 'make', 'build', 'generate', 'website', 'site'];
 
-    async function startRecording() {
-        if (!('webkitSpeechRecognition' in window)) {
-            alert("Speech recognition not supported.");
+    function toggleRecording() {
+        if (isRecording) {
+            stopRecording();
+        } else {
+            startRecording();
+        }
+    }
+
+    function startRecording() {
+        if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
+            alert('Speech recognition not supported in this browser. Please use Chrome or Edge.');
             return;
         }
 
-        const micBtn = document.getElementById("micBtn");
-        const mic = document.getElementById("mic");
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        recognition = new SpeechRecognition();
+        
+        recognition.continuous = true;
+        recognition.interimResults = true;
+        recognition.lang = 'en-US';
 
-        micBtn.innerText = "Listening...";
-        micBtn.disabled = true;
+        const micBtn = document.getElementById('micBtn');
+        const status = document.getElementById('status');
+        
+        micBtn.classList.add('listening');
+        micBtn.innerHTML = '🔴';
+        isRecording = true;
+        
+        status.style.display = 'block';
+        status.className = 'status listening';
+        status.innerHTML = '🎙️ Listening... Speak now!';
 
-        mic.style.background = "#4CAF50";
-        mic.style.color = "white";
-
-        startMicVisualization();
-
-        recognition = new webkitSpeechRecognition();
-        recognition.lang = "en-US";
-        recognition.continuous = false;
-
+        let finalTranscript = '';
+        
         recognition.onresult = (event) => {
-            document.getElementById("output").value =
-                event.results[0][0].transcript;
+            let interimTranscript = '';
+            
+            for (let i = event.resultIndex; i < event.results.length; i++) {
+                const transcript = event.results[i][0].transcript;
+                if (event.results[i].isFinal) {
+                    finalTranscript += transcript + ' ';
+                } else {
+                    interimTranscript += transcript;
+                }
+            }
+            
+            document.getElementById('transcript').value = finalTranscript + interimTranscript;
+            
+            // Auto-generate if user mentions website creation keywords
+            const text = (finalTranscript + interimTranscript).toLowerCase();
+            if (finalTranscript && autoGenerateKeywords.some(keyword => text.includes(keyword))) {
+                setTimeout(() => {
+                    if (finalTranscript.trim()) {
+                        stopRecording();
+                        setTimeout(() => generateWebsite(), 1000);
+                    }
+                }, 2000);
+            }
         };
 
-        recognition.onend = stopMic;
-        recognition.onerror = stopMic;
+        recognition.onerror = (event) => {
+            console.error('Speech recognition error:', event.error);
+            stopRecording();
+            status.innerHTML = '❌ Error: ' + event.error;
+            status.className = 'status';
+        };
+
+        recognition.onend = () => {
+            if (isRecording) {
+                stopRecording();
+            }
+        };
 
         recognition.start();
     }
 
-    async function startMicVisualization() {
-        audioContext = new AudioContext();
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-
-        analyser = audioContext.createAnalyser();
-        analyser.fftSize = 256;
-
-        micSource = audioContext.createMediaStreamSource(stream);
-        micSource.connect(analyser);
-
-        const dataArray = new Uint8Array(analyser.frequencyBinCount);
-        const mic = document.getElementById("mic");
-
-        function animate() {
-            analyser.getByteFrequencyData(dataArray);
-            let volume = dataArray.reduce((a, b) => a + b) / dataArray.length;
-            let scale = Math.min(40, volume);
-
-            mic.style.boxShadow =
-                `0 0 0 ${scale}px rgba(76,175,80,0.3)`;
-
-            animationId = requestAnimationFrame(animate);
+    function stopRecording() {
+        if (recognition) {
+            recognition.stop();
         }
-
-        animate();
-    }
-
-    function stopMic() {
-        const micBtn = document.getElementById("micBtn");
-        const mic = document.getElementById("mic");
-
-        micBtn.innerText = "Start Speaking";
-        micBtn.disabled = false;
-
-        cancelAnimationFrame(animationId);
-        if (audioContext) audioContext.close();
-
-        mic.style.boxShadow = "none";
-        mic.style.background = "#e0e0e0";
-        mic.style.color = "#555";
+        
+        const micBtn = document.getElementById('micBtn');
+        const status = document.getElementById('status');
+        
+        micBtn.classList.remove('listening');
+        micBtn.innerHTML = '🎙️';
+        isRecording = false;
+        
+        status.innerHTML = '✅ Recording stopped';
+        status.className = 'status';
+        
+        setTimeout(() => {
+            status.style.display = 'none';
+        }, 2000);
     }
 
     async function generateWebsite() {
-        const text = document.getElementById("output").value;
-        if (!text.trim()) {
-            alert("Please speak something first.");
+        const text = document.getElementById('transcript').value.trim();
+        
+        if (!text) {
+            alert('Please speak something or type your website description first.');
             return;
         }
 
-        const res = await fetch("/generate", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ text })
-        });
+        const loading = document.getElementById('loading');
+        const result = document.getElementById('result');
+        
+        loading.style.display = 'block';
+        result.style.display = 'none';
 
-        const data = await res.json();
+        try {
+            const response = await fetch('/generate', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ text })
+            });
 
-        document.getElementById("biz").innerText = data.business_name;
-        document.getElementById("type").innerText = data.website_type;
-        document.getElementById("style").innerText = data.style;
-        document.getElementById("services").innerText =
-            data.services.join(", ");
+            const data = await response.json();
+            
+            if (data.error) {
+                throw new Error(data.error);
+            }
 
-        document.getElementById("preview").srcdoc = data.html;
-        document.getElementById("result").style.display = "block";
+            // Display results
+            document.getElementById('businessName').textContent = data.business_name || 'N/A';
+            document.getElementById('websiteType').textContent = data.website_type || 'N/A';
+            document.getElementById('designStyle').textContent = data.style || 'N/A';
+            document.getElementById('servicesList').textContent = 
+                (data.services && data.services.length > 0) ? data.services.join(', ') : 'None specified';
+
+            document.getElementById('preview').srcdoc = data.html;
+            
+            loading.style.display = 'none';
+            result.style.display = 'block';
+            
+            // Scroll to result
+            result.scrollIntoView({ behavior: 'smooth' });
+            
+        } catch (error) {
+            loading.style.display = 'none';
+            alert('Error generating website: ' + error.message);
+        }
     }
+
+    function clearAll() {
+        document.getElementById('transcript').value = '';
+        document.getElementById('result').style.display = 'none';
+        document.getElementById('status').style.display = 'none';
+        
+        if (isRecording) {
+            stopRecording();
+        }
+    }
+
+    // Auto-focus on transcript area
+    document.getElementById('transcript').focus();
 </script>
 </body>
 </html>

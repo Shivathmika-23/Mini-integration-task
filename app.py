@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify, render_template
+from flask import Flask, request, jsonify
 from openai import OpenAI
 import speech_recognition as sr
 import tempfile
@@ -84,7 +84,7 @@ def generate_html(data):
 
 @app.route('/')
 def index():
-    return render_template('index.html')
+    return "welcome"
 
 @app.route('/generate', methods=['POST'])
 def generate_website():

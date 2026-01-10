@@ -1,4 +1,5 @@
 flask
 openai
 SpeechRecognition
-pyaudio
+pydub
+gunicorn

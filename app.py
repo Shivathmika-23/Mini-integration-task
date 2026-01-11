@@ -1,126 +1,198 @@
-from fastapi import FastAPI, UploadFile, File
-import speech_recognition as sr
-import tempfile
+from flask import Flask, request, jsonify, render_template
+from openai import OpenAI
 import os
 import json
-from openai import OpenAI
 
-app = FastAPI()
+app = Flask(__name__)
 
-# --- LLM Setup ---
-HF_TOKEN = os.getenv("HF_TOKEN")
+# -----------------------------
+# Hugging Face Router LLM Setup
+# -----------------------------
+HF_TOKEN =os.getenv("HF_TOKEN")
 llm_client = OpenAI(
     base_url="https://router.huggingface.co/v1",
     api_key=HF_TOKEN
 )
 
-@app.get("/")
-def root():
-    return {"status": "API running"}
 
-# --- LLM extraction (safe) ---
+@app.route("/")
+def index():
+    return render_template("index.html")
+
+
+# -----------------------------
+# LLM Extraction Function
+# -----------------------------
 def extract_with_llm(text):
-    try:
-        prompt = f"""Extract website details from this text and return only JSON:
+    prompt = f"""
+You are a precise information extraction system.
 
-Text: "{text}"
+Your task is to extract structured website requirements from the given text.
 
-Return format:
+Text:
+\"\"\"{text}\"\"\"
+
+Extraction Rules:
+- Extract ONLY what is explicitly stated or very clearly implied.
+- Do NOT guess names, services, or styles.
+- Do NOT infer information that is not mentioned.
+- If a field is missing, return an empty string or empty list.
+- Normalize values (e.g., "heart care" → "Cardiology").
+- Return ONLY valid JSON.
+- Do NOT include explanations, markdown, or extra text.
+
+Fields to extract:
+- name: Business or website name
+- type: Website type (Hospital, School, Restaurant, Company, etc.)
+- style: Design style (Modern, Minimal, Professional, etc.)
+- services: List of services offered
+
+Output format (strict):
 {{
-  "name": "business name",
-  "type": "website type (Hospital/School/Restaurant/Company)",
-  "style": "design style (Modern/Minimal/Professional)",
-  "services": ["service1", "service2"]
-}}"""
-        completion = llm_client.chat.completions.create(
-            model="meta-llama/Llama-3.1-8B-Instruct:novita",
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0
-        )
-        content = completion.choices[0].message.content.strip()
-        start = content.find("{")
-        end = content.rfind("}") + 1
-        if start != -1 and end > 0:
-            return json.loads(content[start:end])
-    except Exception as e:
-        return {"error": f"LLM extraction failed: {str(e)}"}
-    return {"name": "Default Business", "type": "Business", "style": "Modern", "services": []}
+  "name": "",
+  "type": "",
+  "style": "",
+  "services": []
+}}
+"""
 
-# --- HTML generator ---
-def generate_html(data):
+    completion = llm_client.chat.completions.create(
+        model="meta-llama/Llama-3.1-8B-Instruct:novita",
+        messages=[{"role": "user", "content": prompt}],
+        temperature=0
+    )
+
+    content = completion.choices[0].message.content.strip()
+
+    # Safety: extract JSON only
+    content = content[content.find("{"): content.rfind("}") + 1]
+    return json.loads(content)
+
+
+# -----------------------------
+# Generate Website API
+# -----------------------------
+@app.route("/generate", methods=["POST"])
+def generate():
     try:
-        name = data.get('name', 'My Business')
-        website_type = data.get('type', 'Business')
-        style = data.get('style', 'Modern')
-        services = data.get('services', [])
-        services_html = ""
-        if services:
-            services_html = '<h2>Our Services</h2><div class="services">'
-            for service in services:
-                services_html += f'<div class="service"><h3>{service}</h3></div>'
-            services_html += '</div>'
-        return f"""<html><head><title>{name}</title></head>
-        <body>
-        <h1>{name}</h1>
-        <p>{website_type} - {style} Style</p>
-        {services_html}
-        </body></html>"""
-    except Exception as e:
-        return f"<p>HTML generation error: {str(e)}</p>"
+        data = request.get_json()
+        text = data.get("text", "")
+        
+        if not text.strip():
+            return jsonify({"error": "No text provided"}), 400
 
-# --- /generate endpoint ---
-@app.post("/generate")
-async def generate_website(audio: UploadFile = File(...)):
-    response = {"debug": []}
-    try:
-        # Save uploaded audio
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp:
-            content = await audio.read()
-            tmp.write(content)
-            path = tmp.name
-        response["debug"].append(f"Saved file: {path}")
-    except Exception as e:
-        response["error"] = f"Failed to save audio: {e}"
-        print("ERROR:", e)
-        return response
+        # Call LLM extractor
+        extracted = extract_with_llm(text)
 
-    try:
-        # Recognize speech
-        r = sr.Recognizer()
-        with sr.AudioFile(path) as source:
-            audio_data = r.record(source)
-            try:
-                text = r.recognize_google(audio_data)
-            except Exception as e:
-                text = f"[Recognition failed: {e}]"
-        response["debug"].append(f"Recognized text: {text}")
+        # Fallbacks (never break UI)
+        business_name = extracted.get("name", "My Business") 
+        website_type = extracted.get("type", "Business") 
+        style = extracted.get("style", "Modern") 
+        services = extracted.get("services", [])
     except Exception as e:
-        response["error"] = f"SpeechRecognition error: {e}"
-        print("ERROR:", e)
-        return response
-    finally:
-        try:
-            os.unlink(path)
-        except:
-            pass
+        return jsonify({"error": str(e)}), 500
 
-    try:
-        # LLM extraction
-        website_data = extract_with_llm(text)
-        response["debug"].append(f"Website data: {website_data}")
-    except Exception as e:
-        response["error"] = f"LLM extraction error: {e}"
-        print("ERROR:", e)
-        return response
+    # -----------------------------
+    # HTML Generation
+    # -----------------------------
+    html = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>{business_name}</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <style>
+            * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+            body {{
+                font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                line-height: 1.6;
+                color: #333;
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                min-height: 100vh;
+            }}
+            .container {{
+                max-width: 1200px;
+                margin: 0 auto;
+                padding: 20px;
+            }}
+            .header {{
+                background: rgba(255,255,255,0.95);
+                padding: 40px;
+                border-radius: 15px;
+                text-align: center;
+                margin-bottom: 30px;
+                box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+            }}
+            .header h1 {{
+                color: #2c3e50;
+                font-size: 3em;
+                margin-bottom: 10px;
+            }}
+            .header .type {{
+                color: #7f8c8d;
+                font-size: 1.2em;
+                margin-bottom: 20px;
+            }}
+            .content {{
+                background: rgba(255,255,255,0.95);
+                padding: 40px;
+                border-radius: 15px;
+                box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+            }}
+            .services {{
+                display: grid;
+                grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+                gap: 20px;
+                margin-top: 30px;
+            }}
+            .service-card {{
+                background: #f8f9fa;
+                padding: 25px;
+                border-radius: 10px;
+                border-left: 4px solid #3498db;
+                transition: transform 0.3s ease;
+            }}
+            .service-card:hover {{
+                transform: translateY(-5px);
+            }}
+            .style-badge {{
+                display: inline-block;
+                background: #3498db;
+                color: white;
+                padding: 8px 16px;
+                border-radius: 20px;
+                font-size: 0.9em;
+                margin-top: 10px;
+            }}
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="header">
+                <h1>{business_name}</h1>
+                <div class="type">{website_type}</div>
+                <div class="style-badge">{style} Design</div>
+            </div>
+            
+            <div class="content">
+                <h2>Our Services</h2>
+                <div class="services">
+                    {''.join(f'<div class="service-card"><h3>{s}</h3><p>Professional {s.lower()} services tailored to your needs.</p></div>' for s in services)}
+                </div>
+            </div>
+        </div>
+    </body>
+    </html>
+    """
 
-    try:
-        # Generate HTML
-        html = generate_html(website_data)
-        response["html"] = html
-    except Exception as e:
-        response["error"] = f"HTML generation error: {e}"
-        print("ERROR:", e)
-        return response
+    return jsonify({
+        "business_name": business_name,
+        "website_type": website_type,
+        "style": style,
+        "services": services,
+        "html": html
+    })
 
-    print("RESPONSE DEBUG:", response)
-    return response
+
+if __name__ == "__main__":
+    app.run(debug=True)
